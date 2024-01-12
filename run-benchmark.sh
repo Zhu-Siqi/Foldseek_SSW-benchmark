@@ -24,25 +24,27 @@ if [ ! -f tool/ssw_test ]; then
 fi
 
 # Encode PDBs
-while read line ; do
-	array+=($line)
-done < ./data/pdblist
+if [ ! -d data/token ]; then
+	mkdir data/token
+	while read line ; do
+		array+=($line)
+	done < ./data/pdblist
 
-for id in "${array[@]}"; do
-	./tool/foldseek  structureto3didescriptor ./data/$id  ./data/token/$id.3di
-	awk '{print ">" $1} {print $3}' < $id.3di > ./data/token/$id.new3di
- 	cat ./data/token/*.new3di >> tmp/target.fasta
-done
+	for id in "${array[@]}"; do
+		./tool/foldseek  structureto3didescriptor ./data/pdb/$id  ./data/token/$id.3di
+		awk '{print ">" $1} {print $3}' < ./data/token/$id.3di > ./data/token/$id.new3di
+	done
+	cat ./data/token/*.new3di > tmp/target.fasta
+fi
 
-        
 # Run benchmark
-../tool/ssw_test -o 10 -e 1 -a data/mat3di.mat -p  tmp/target.fasta tmp/target.fasta >> tmp/foldseekswraw
+./tool/ssw_test -o 10 -e 1 -a data/mat3di.mat -p  tmp/target.fasta tmp/target.fasta > tmp/foldseekswraw
 
 ## extracting alignment result from raw file
-grep -a -nE "^(target_name:|query_name:|optimal_alignment_score):" tmp/foldseekswraw | awk '{print $1,$2}' | awk -F ":" '{print $1,$3}' | awk '{print $2}' | xargs -n 3 | awk '{print $2,$1,$3}' |  sort -k1,1 -k3,3nr -T /sortcache --parallel=4> tmp/foldseekswaln
+grep -a -n "^target_name:\|^query_name:\|^optimal_alignment_score:" tmp/foldseekswraw | awk '{print $1,$2}' | awk -F ":" '{print $1,$3}' | awk '{print $2}' |  awk '{ORS=NR%3?"\t":"\n";print}' |awk '{print $2,$1,$3}' |  sort -k1,1 -k3,3nr  > tmp/foldseekswaln
 
 ## generate ROCX file
-./benchroc.awk data/scop_lookup.fix.tsv <(cat tmp/foldseekswaln) > tmp/foldseeksw.rocx
+./benchroc.awk data/scop_lookup.tsv <(cat tmp/foldseekswaln) > tmp/foldseeksw.rocx
 
 ## calculate auc
  awk '{ famsum+=$3; supfamsum+=$4; foldsum+=$5}END{print famsum/NR,supfamsum/NR,foldsum/NR}' tmp/foldseeksw.rocx
